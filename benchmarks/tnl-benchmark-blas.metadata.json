@@ -1,0 +1,21 @@
+{
+	"CPU cache sizes (L1d, L1i, L2, L3) (kiB)": "32, 32, 256, 16384",
+	"CPU cores": "8",
+	"CPU max frequency (MHz)": "5000.000000",
+	"CPU model name": " Intel(R) Core(TM) i9-9900KF CPU @ 3.60GHz",
+	"CPU threads per core": "2",
+	"GPU CUDA cores": "3584",
+	"GPU architecture": "8.6",
+	"GPU clock rate (MHz)": "1807.000000",
+	"GPU global memory (GB)": "12.635865",
+	"GPU memory ECC enabled": "0",
+	"GPU memory clock rate (MHz)": "7501.000000",
+	"GPU name": "NVIDIA GeForce RTX 3060",
+	"OpenMP enabled": "no",
+	"OpenMP threads": "0",
+	"architecture": "x86_64",
+	"host name": "gp7.fjfi.cvut.cz",
+	"start time": "Fri Nov 18 2022, 22:58:12",
+	"system": "Linux",
+	"system release": "6.0.6-arch1-1"
+}
