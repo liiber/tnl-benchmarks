@@ -14,9 +14,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
   app:
+    platform: linux/amd64
     build: .
     container_name: app
-    restart: unless-stopped
+    restart: no
     command: python -m src.main
     ports:
       - "${APP_PORT:-8000}:8000"
@@ -26,6 +27,7 @@ services:
       - tnl_benchmark_db
     volumes:
       - .:/app
+      - workspace:/workspace
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin
@@ -39,3 +41,4 @@ services:
       - tnl_benchmark_db
 volumes:
   postgres_data:
+  workspace:
