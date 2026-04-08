@@ -1,6 +1,6 @@
 sqlalchemy~=2.0.44
 asyncpg
-pydantic-settings~=2.12.0
+pydantic-settings
 pydantic~=2.12.4
 asyncio
 greenlet

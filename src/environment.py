@@ -9,6 +9,7 @@ class Environment(BaseSettings):
     DB_NAME: str = Field(..., min_length=3)
     DB_HOST: str = Field(..., min_length=3)
     DB_PORT: int = 5432
+    TNL_REPO_URL: str = Field(...)
 
     model_config = SettingsConfigDict(env_file=".env")
 
