@@ -28,7 +28,7 @@ from src.ingest.utils import (
 TNL_BENCHMARKS_BUILD_OUTPUT_DIR = f"{TNL_REPO_PATH}/build/bin" # Benchmarks are build to `bin` folder
 TNL_BENCHMARK_METADATA_FILE_FORMAT=".metadata.json"
 TNL_BENCHMARK_LOG_FILE_FORMAT= ".log"
-TNL_BENCHMARK_NAMING_PATTERN="tnl-benchmark-blas" # TODO: Rename to "tnl-benchmark"
+TNL_BENCHMARK_NAMING_PATTERN="tnl-benchmark"
 
 def parse_metadata(path: str):
     with open(path) as f:
