@@ -46,8 +46,6 @@ def sha256_file(path):
     return h.hexdigest()
 
 def sha256_folder(folder_path):
-    import hashlib, os
-
     hashes = []
     for root, dirs, files in os.walk(folder_path):
         for file in sorted(files):
