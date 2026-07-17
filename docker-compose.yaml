@@ -1,44 +1,33 @@
 version: '3.9'
 
 services:
-  tnl_benchmark_db:
-    image: postgres:16
-    container_name: tnl_benchmarks_db
-    restart: unless-stopped
-    ports:
-      - "${DB_PORT:-5432}:5432"
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-  app:
+  ingest:
     platform: linux/amd64
     build: .
-    container_name: app
+    container_name: ingest
     restart: no
     command: python -m src.main
-    ports:
-      - "${APP_PORT:-8000}:8000"
+    network_mode: host
+    # Pass the host GPUs into the container (CDI, verified working with
+    # `podman run --device nvidia.com/gpu=all`). Required for CUDA benchmarks.
+    devices:
+      - nvidia.com/gpu=all
     env_file:
       - .env
-    depends_on:
-      - tnl_benchmark_db
     volumes:
       - .:/app
       - workspace:/workspace
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
+  api:
+    platform: linux/amd64
+    build: .
+    container_name: api
     restart: unless-stopped
-    ports:
-      - "5050:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    depends_on:
-      - tnl_benchmark_db
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port ${API_PORT:-8001}
+    network_mode: host
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - workspace:/workspace
 volumes:
-  postgres_data:
   workspace:

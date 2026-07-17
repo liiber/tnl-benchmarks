@@ -1,171 +1,148 @@
-import os
 import json
+import os
+import shlex
+import subprocess
 from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+
 from src.database import async_session
-from src.models.benchmarks import (
-    Benchmark,
-    BenchmarkOperation,
-    BenchmarkRun,
-    BenchmarkMachine,
-    BenchmarkResult,
-)
+from src.environment import ENV
+from src.ingest.mappers import build_machine_fields
+from src.ingest.parsers import parse_log, parse_metadata
 from src.ingest.utils import (
     TNL_REPO_PATH,
     TNL_REPO_URL,
-    get_git_commit_hash,
-    run_command,
-    build_tnl,
     WORKSPACE_PATH,
-    git_clone_or_pull,
-    sha256_folder,
+    build_tnl,
     compute_machine_hash,
     compute_run_hash,
+    get_git_commit_hash,
     get_or_create,
+    git_clone_or_pull,
+    run_command,
 )
+from src.models.benchmarks import (
+    Benchmark,
+    BenchmarkMachine,
+    BenchmarkOperation,
+    BenchmarkResult,
+    BenchmarkResultMetadata,
+    BenchmarkRun,
+)
+from src.utils import Logger, utcnow
 
-TNL_BENCHMARKS_BUILD_OUTPUT_DIR = f"{TNL_REPO_PATH}/build/bin" # Benchmarks are build to `bin` folder
-TNL_BENCHMARK_METADATA_FILE_FORMAT=".metadata.json"
-TNL_BENCHMARK_LOG_FILE_FORMAT= ".log"
-TNL_BENCHMARK_NAMING_PATTERN="tnl-benchmark-blas" # TODO: Rename to "tnl-benchmark"
+TNL_BENCHMARKS_BUILD_OUTPUT_DIR = f"{TNL_REPO_PATH}/build/bin"
+BENCHMARK_METADATA_FILE_SUFFIX = ".metadata.json"
+BENCHMARK_LOG_FILE_SUFFIX = ".log"
+BENCHMARK_ARGS_FILE = "benchmark-args.json"
 
-def parse_metadata(path: str):
-    with open(path) as f:
-        return json.load(f)
 
-def parse_log(path: str):
-    results = []
+def _load_benchmark_args() -> dict[str, list[str]]:
+    if not os.path.exists(BENCHMARK_ARGS_FILE):
+        return {}
+    with open(BENCHMARK_ARGS_FILE) as f:
+        raw = json.load(f)
+    return {name: shlex.split(args) for name, args in raw.items()}
 
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
 
-            if not line.startswith("{"):
+def run_benchmarks(execute: bool = True) -> dict[str, list[tuple[str, str]]]:
+    results: dict[str, list[tuple[str, str]]] = {}
+
+    per_benchmark_args = _load_benchmark_args()
+    timeout = ENV.TNL_BENCHMARK_TIMEOUT_SECONDS
+
+    for root, _dirs, files in os.walk(TNL_BENCHMARKS_BUILD_OUTPUT_DIR):
+        for file in sorted(files):
+            if not file.startswith(ENV.TNL_BENCHMARK_NAMING_PATTERN):
+                continue
+            if file.endswith(BENCHMARK_METADATA_FILE_SUFFIX) or file.endswith(
+                BENCHMARK_LOG_FILE_SUFFIX
+            ):
                 continue
 
-            row = json.loads(line)
-
-            results.append({
-                "operation": row.get("operation") or None,
-                "precision": row.get("precision") or None,
-                "host_allocator": row.get("host allocator") or None,
-                "size": float(row["size"]) if row.get("size") is not None else None,
-                "rows": int(row["rows"]) if row.get("rows") is not None else None,
-                "columns": int(row["columns"]) if row.get("columns") is not None else None,
-                "performer": row.get("performer") or None,
-                "time": float(row.get("time", 0)),
-                "stddev": float(row.get("stddev", 0)),
-                "stddev_time": float(row.get("stddev/time", 0)),
-                "loops": int(row.get("loops", 0)),
-                "bandwidth": float(row["bandwidth"])
-                if row.get("bandwidth") not in [None, "N/A"]
-                else None,
-                "speedup": float(row["speedup"])
-                if row.get("speedup") not in [None, "N/A"]
-                else None,
-            })
-
-    return results
-
-def run_benchmarks():
-    results = []
-
-    for root, dirs, files in os.walk(TNL_BENCHMARKS_BUILD_OUTPUT_DIR):
-        for file in files:
-            if file.startswith(TNL_BENCHMARK_NAMING_PATTERN) and not file.endswith(TNL_BENCHMARK_METADATA_FILE_FORMAT) and not file.endswith(TNL_BENCHMARK_LOG_FILE_FORMAT):
+            if execute:
                 binary = os.path.join(root, file)
-                print(">> Running:", binary)
+                cmd = [binary] + per_benchmark_args.get(file, [])
+                timeout_str = f" (timeout={timeout}s)" if timeout else ""
+                Logger.info(f">> Running: {file}{timeout_str}")
 
-                run_command([binary], cwd=root)
+                try:
+                    run_command(cmd, cwd=root, timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    Logger.warning(f">> Timed out after {timeout}s: {file}, skipping")
+                    continue
+                except Exception as exc:
+                    Logger.error(f">> Failed: {file}: {exc}")
+                    continue
+            else:
+                Logger.info(f">> Collecting existing results: {file}")
 
-                metadata = os.path.join(root, f"{file}.metadata.json")
-                log = os.path.join(root, f"{file}.log")
+            metadata = os.path.join(root, f"{file}{BENCHMARK_METADATA_FILE_SUFFIX}")
+            log = os.path.join(root, f"{file}{BENCHMARK_LOG_FILE_SUFFIX}")
+            if not os.path.exists(metadata) or not os.path.exists(log):
+                Logger.warning(f">> Missing output files for {file}, skipping")
+                continue
 
-                results.append((metadata, log))
+            results.setdefault(file, []).append((metadata, log))
 
     return results
 
 
-async def ingest_results(files, start_time: datetime, end_time: datetime):
+async def ingest_results(
+    benchmark_name: str,
+    files: list[tuple[str, str]],
+    start_time: datetime,
+    end_time: datetime,
+    commit_hash: str,
+):
     if not files:
-        print(">> No benchmark results found")
+        Logger.warning(f">> [{benchmark_name}] No results found, skipping")
         return
 
-    _METADATA_START_TIME_FORMAT = "%a %b %d %Y, %H:%M:%S"
+    all_rows = []
+    for _metadata_path, log_path in files:
+        all_rows.extend(row for row in parse_log(log_path) if row["operation"])
 
+    if not all_rows:
+        Logger.warning(f">> [{benchmark_name}] No operations found, skipping")
+        return
 
     async with async_session() as session:
         async with session.begin():
-
             metadata = parse_metadata(files[0][0])
             machine_hash = compute_machine_hash(metadata)
-            commit_hash = get_git_commit_hash()
-            run_hash = compute_run_hash(commit_hash, machine_hash)
+            run_hash = compute_run_hash(
+                commit_hash,
+                machine_hash,
+                start_time.isoformat(),
+                benchmark_name,
+            )
 
-            raw_start = metadata.get("start time")
-            if raw_start:
-                try:
-                    start_time = datetime.strptime(raw_start, _METADATA_START_TIME_FORMAT)
-                except ValueError:
-                    pass  # keep the passed-in start_time as fallback
-
-            print(f">> commit={commit_hash[:8]}")
-            print(f">> machine_hash={machine_hash[:8]}")
-            print(f">> run_hash={run_hash[:8]}")
+            Logger.info(
+                f">> [{benchmark_name}] commit={commit_hash[:8]} run_hash={run_hash[:8]}"
+            )
 
             existing = await session.execute(
                 select(BenchmarkRun).where(BenchmarkRun.run_hash == run_hash)
             )
             if existing.scalar_one_or_none():
-                print(">> Run already exists, skipping")
+                Logger.warning(f">> [{benchmark_name}] Run already exists, skipping")
                 return
 
             benchmark = await get_or_create(
                 session,
                 Benchmark,
-                benchmark_name=TNL_BENCHMARK_NAMING_PATTERN
+                benchmark_name=benchmark_name,
             )
 
             machine = await get_or_create(
                 session,
                 BenchmarkMachine,
                 machine_hash=machine_hash,
-                defaults={
-                    "cpu_cache_sizes": metadata.get("CPU cache sizes (L1d, L1i, L2, L3) (kiB)") or None,
-                    "cpu_cores": int(metadata.get("CPU cores", 0)),
-                    "cpu_max_frequency": int(float(metadata.get("CPU max frequency (MHz)", 0))),
-                    "cpu_model_name": metadata.get("CPU model name", "").strip() or None,
-                    "cpu_threads_per_core": int(metadata.get("CPU threads per core", 0)),
-                    "gpu_name": metadata.get("GPU name", "").strip() or None,
-                    "gpu_cuda_cores": int(metadata["GPU CUDA cores"])
-                    if metadata.get("GPU CUDA cores") not in [None, "", "0", 0]
-                    else None,
-                    "gpu_architecture": float(metadata["GPU architecture"])
-                    if metadata.get("GPU architecture") not in [None, "", "0", "0.0", 0]
-                    else None,
-                    "gpu_clock_rate_mhz": float(metadata["GPU clock rate (MHz)"])
-                    if metadata.get("GPU clock rate (MHz)") not in [None, "", "0", "0.0", 0]
-                    else None,
-                    "gpu_global_memory_gb": float(metadata["GPU global memory (GB)"])
-                    if metadata.get("GPU global memory (GB)") not in [None, "", "0", "0.0", 0]
-                    else None,
-                    "gpu_memory_ecc_enabled": bool(int(metadata["GPU memory ECC enabled"]))
-                    if metadata.get("GPU memory ECC enabled") not in [None, ""]
-                    else None,
-                    "gpu_memory_clock_rate_mhz": float(metadata["GPU memory clock rate (MHz)"])
-                    if metadata.get("GPU memory clock rate (MHz)") not in [None, "", "0", "0.0", 0]
-                    else None,
-                    "openmp_enabled": metadata.get("OpenMP enabled", "no") == "yes",
-                    "openmp_threads": int(metadata.get("OpenMP threads", 0)),
-                    "architecture": metadata.get("architecture") or None,
-                    "host_name": metadata.get("host name") or None,
-                    "system": metadata.get("system") or None,
-                    "system_release": metadata.get("system release") or None,
-                }
+                defaults=build_machine_fields(metadata),
             )
-
-            source_checksum = sha256_folder(TNL_BENCHMARKS_BUILD_OUTPUT_DIR)
 
             run = BenchmarkRun(
                 benchmark_id=benchmark.id,
@@ -173,7 +150,6 @@ async def ingest_results(files, start_time: datetime, end_time: datetime):
                 run_hash=run_hash,
                 source_url=TNL_REPO_URL,
                 source_version=commit_hash,
-                source_checksum=source_checksum,
                 start_time=start_time,
                 end_time=start_time,
                 duration=0,
@@ -184,64 +160,81 @@ async def ingest_results(files, start_time: datetime, end_time: datetime):
 
             operations_cache = {}
 
-            for metadata_path, log_path in files:
-                parsed = parse_log(log_path)
+            for row in all_rows:
+                op_name = row["operation"]
 
-                for row in parsed:
-                    op_name = row["operation"]
-
-                    if not op_name:
-                        print(f">> Skipping row with missing operation in {log_path}")
-                        continue
-
-                    if op_name not in operations_cache:
-                        op = await get_or_create(
-                            session,
-                            BenchmarkOperation,
-                            benchmark_id=benchmark.id,
-                            operation_name=op_name
-                        )
-                        operations_cache[op_name] = op
-                    else:
-                        op = operations_cache[op_name]
-
-                    result = BenchmarkResult(
-                        operation_id=op.id,
-                        run_id=run.id,
-                        precision=row["precision"],
-                        host_allocator=row["host_allocator"],
-                        size=row["size"],
-                        rows=row["rows"],
-                        columns=row["columns"],
-                        performer=row["performer"],
-                        time=row["time"],
-                        stddev=row["stddev"],
-                        stddev_time=row["stddev_time"],
-                        loops=row["loops"],
-                        bandwidth=row["bandwidth"],
-                        speedup=row["speedup"],
+                if op_name not in operations_cache:
+                    op = await get_or_create(
+                        session,
+                        BenchmarkOperation,
+                        benchmark_id=benchmark.id,
+                        operation_name=op_name,
                     )
+                    operations_cache[op_name] = op
+                else:
+                    op = operations_cache[op_name]
 
-                    session.add(result)
+                metrics = row["metrics"]
+                result = BenchmarkResult(
+                    operation_id=op.id,
+                    run_id=run.id,
+                    time=metrics["time"],
+                    time_median=metrics["time_median"],
+                    stddev=metrics["stddev"],
+                    stddev_time=metrics["stddev_time"],
+                    loops=metrics["loops"],
+                    bandwidth=metrics["bandwidth"],
+                    cpu_cycles=metrics["cpu_cycles"],
+                    cpu_cycles_median=metrics["cpu_cycles_median"],
+                    cpu_cycles_stddev=metrics["cpu_cycles_stddev"],
+                    cpu_cycles_per_operation=metrics["cpu_cycles_per_operation"],
+                    ops_per_loop=metrics["ops_per_loop"],
+                    metadata_entries=[
+                        BenchmarkResultMetadata(key=k, value=v)
+                        for k, v in row["metadata"].items()
+                    ],
+                )
+
+                session.add(result)
 
             run.end_time = end_time
             run.duration = (end_time - start_time).total_seconds()
 
         try:
             await session.commit()
-            print(">> Ingest completed")
+            Logger.success(f">> [{benchmark_name}] Ingest completed")
         except IntegrityError:
             await session.rollback()
-            print(">> Duplicate detected (race condition)")
+            Logger.error(f">> [{benchmark_name}] Duplicate detected (race condition)")
 
-async def benchmark_ingest_runner():
+
+async def benchmark_ingest_runner(
+    prepare_sources: bool = True, execute_benchmarks: bool = True
+):
     os.makedirs(WORKSPACE_PATH, exist_ok=True)
 
-    git_clone_or_pull()
-    build_tnl()
+    if not execute_benchmarks:
+        Logger.error("=" * 64)
+        Logger.error(">> DANGER: running in --no-rebuild mode.")
+        Logger.error(">> Benchmarks are NOT executed. Existing .log/.metadata.json")
+        Logger.error(">> files on disk are ingested as-is, so the data may be STALE")
+        Logger.error(
+            ">> or from a previous commit/build. Do NOT use for fresh results."
+        )
+        Logger.error("=" * 64)
 
-    start_time = datetime.utcnow()
-    results = run_benchmarks()
-    end_time = datetime.utcnow()
+    if prepare_sources:
+        git_clone_or_pull()
+        build_tnl()
 
-    await ingest_results(results, start_time, end_time)
+    commit_hash = get_git_commit_hash()
+    start_time = utcnow()
+    results = run_benchmarks(execute=execute_benchmarks)
+    end_time = utcnow()
+
+    if not results:
+        Logger.warning(">> No benchmark results found")
+        return
+
+    for benchmark_name, files in results.items():
+        await ingest_results(benchmark_name, files, start_time, end_time, commit_hash)

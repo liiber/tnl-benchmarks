@@ -1,26 +1,32 @@
+import hashlib
 import os
 import subprocess
-import hashlib
-from src.environment import ENV
+
 from sqlalchemy import select
 
-WORKSPACE_PATH="/workspace"
-TNL_REPO_DIR="tnl"
-TNL_REPO_PATH=f"{WORKSPACE_PATH}/{TNL_REPO_DIR}"
+from src.environment import ENV
+from src.utils import Logger
+
+WORKSPACE_PATH = ENV.WORKSPACE_PATH
+TNL_REPO_DIR = "tnl"
+TNL_REPO_PATH = f"{WORKSPACE_PATH}/{TNL_REPO_DIR}"
 TNL_REPO_URL = ENV.TNL_REPO_URL
 
-def run_command(cmd, cwd=None):
-    subprocess.run(cmd, check=True, cwd=cwd)
+
+def run_command(cmd, cwd=None, timeout=None, env=None):
+    subprocess.run(cmd, check=True, cwd=cwd, timeout=timeout, env=env)
+
 
 def git_clone_or_pull():
     if not os.path.isdir(TNL_REPO_PATH):
-        print(">> Repository does not exist")
+        Logger.info(">> Cloning TNL repository...")
         run_command(["git", "clone", TNL_REPO_URL, TNL_REPO_PATH], cwd=WORKSPACE_PATH)
-        print(">> Repository cloned")
+        Logger.success(">> Repository cloned")
     else:
-        print(">> Pulling existing repository")
+        Logger.info(">> Pulling latest changes...")
         run_command(["git", "pull"], cwd=TNL_REPO_PATH)
-        print(">> Repository pulled")
+        Logger.success(">> Repository updated")
+
 
 def get_git_commit_hash():
     result = subprocess.run(
@@ -28,48 +34,64 @@ def get_git_commit_hash():
         cwd=TNL_REPO_PATH,
         capture_output=True,
         text=True,
-        check=True
+        check=True,
     )
     return result.stdout.strip()
 
+
+def _write_tnl_env():
+    def to_on_off(value: bool) -> str:
+        return "ON" if value else "OFF"
+
+    lines = [
+        "BUILD_DIR=build",
+        f"CMAKE_BUILD_TYPE={ENV.TNL_CMAKE_BUILD_TYPE}",
+        f"TNL_USE_CUDA={to_on_off(ENV.TNL_USE_CUDA)}",
+        f"TNL_USE_HIP={to_on_off(ENV.TNL_USE_HIP)}",
+        f"TNL_USE_OPENMP={to_on_off(ENV.TNL_USE_OPENMP)}",
+        f"TNL_USE_MPI={to_on_off(ENV.TNL_USE_MPI)}",
+    ]
+    with open(f"{TNL_REPO_PATH}/.env", "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
 def build_tnl():
-    # Note: The commands are used from the TNL Docs.
-    #       Check https://tnl-project.gitlab.io/tnl/index.html for more
-    run_command(["cmake", "-B", "build", "-S", ".", "-G", "Ninja"], cwd=TNL_REPO_PATH)
-    run_command(["cmake", "--build", "build", "--target", "benchmarks"], cwd=TNL_REPO_PATH)
+    _write_tnl_env()
+    # Strip our app-level TNL_* and CMAKE_* vars so they don't leak into cmake
+    # via just's `set` command — just reads cmake config from the .env file we wrote
+    clean_env = {
+        k: v for k, v in os.environ.items() if not k.startswith(("TNL_", "CMAKE_"))
+    }
+    Logger.info(">> Configuring build...")
+    run_command(["just", "configure"], cwd=TNL_REPO_PATH, env=clean_env)
+    Logger.info(f">> Building target: {ENV.TNL_BUILD_TARGET}...")
+    run_command(
+        ["just", "build", ENV.TNL_BUILD_TARGET], cwd=TNL_REPO_PATH, env=clean_env
+    )
+    Logger.success(">> Build completed")
 
-def sha256_file(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-def sha256_folder(folder_path):
-    hashes = []
-    for root, dirs, files in os.walk(folder_path):
-        for file in sorted(files):
-            full_path = os.path.join(root, file)
-            with open(full_path, "rb") as f:
-                h = hashlib.sha256()
-                for chunk in iter(lambda: f.read(8192), b""):
-                    h.update(chunk)
-                hashes.append(h.hexdigest())
-
-    return hashlib.sha256("".join(hashes).encode()).hexdigest()
 
 def compute_machine_hash(data: dict) -> str:
-    raw = "|".join([
-        data.get("CPU model name", "unknown"),
-        str(data.get("CPU cores", 0)),
-        data.get("GPU name", "none"),
-        str(data.get("GPU CUDA cores", 0)),
-    ])
+    raw = "|".join(
+        [
+            data.get("CPU model name", "unknown"),
+            str(data.get("CPU cores", 0)),
+            data.get("GPU name", "none"),
+            str(data.get("GPU CUDA cores", 0)),
+        ]
+    )
     return hashlib.sha256(raw.encode()).hexdigest()
 
-def compute_run_hash(commit_hash: str, machine_hash: str) -> str:
-    raw = f"{commit_hash}:{machine_hash}"
+
+def compute_run_hash(
+    commit_hash: str,
+    machine_hash: str,
+    run_started_at: str,
+    benchmark_name: str,
+) -> str:
+    raw = f"{commit_hash}:{machine_hash}:{run_started_at}:{benchmark_name}"
     return hashlib.sha256(raw.encode()).hexdigest()
+
 
 async def get_or_create(session, model, defaults=None, **kwargs):
     result = await session.execute(select(model).filter_by(**kwargs))

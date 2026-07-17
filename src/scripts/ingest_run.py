@@ -6,12 +6,12 @@ from src.ingest.ingest import benchmark_ingest_runner
 from src.utils import Logger
 
 
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="TNL benchmark ingest pipeline.")
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run benchmark ingest pipeline.")
     parser.add_argument(
         "--skip-prepare",
         action="store_true",
-        help="Skip git clone/pull and build; run the already-built binaries.",
+        help="Skip git clone/pull and benchmark build step, run only binaries already built.",
     )
     parser.add_argument(
         "--no-rebuild",
@@ -21,11 +21,10 @@ def _parse_args() -> argparse.Namespace:
             "or running benchmarks. Fast, but the data may be stale."
         ),
     )
-    return parser.parse_args()
+    return parser
 
 
-async def main(skip_prepare: bool, no_rebuild: bool):
-    Logger.bold("=== TNL Benchmarks Ingest ===")
+async def run_ingest(skip_prepare: bool, no_rebuild: bool) -> None:
     Logger.info("Initializing database...")
     await wait_for_db()
     Logger.success("Database initialized!")
@@ -33,8 +32,12 @@ async def main(skip_prepare: bool, no_rebuild: bool):
         prepare_sources=not (skip_prepare or no_rebuild),
         execute_benchmarks=not no_rebuild,
     )
-    Logger.bold("=== Done ===")
 
 
-_args = _parse_args()
-asyncio.run(main(skip_prepare=_args.skip_prepare, no_rebuild=_args.no_rebuild))
+def main() -> None:
+    args = build_parser().parse_args()
+    asyncio.run(run_ingest(skip_prepare=args.skip_prepare, no_rebuild=args.no_rebuild))
+
+
+if __name__ == "__main__":
+    main()

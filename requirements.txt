@@ -1,3 +1,6 @@
+ruff
+pytest
+alembic
 sqlalchemy~=2.0.44
 asyncpg
 pydantic-settings
@@ -5,3 +8,5 @@ pydantic~=2.12.4
 asyncio
 greenlet
 psycopg[async]
+fastapi~=0.116.1
+uvicorn~=0.35.0
