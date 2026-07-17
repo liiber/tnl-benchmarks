@@ -1,0 +1,16 @@
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501", # line too long — handled by formatter
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
