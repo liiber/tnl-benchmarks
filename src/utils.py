@@ -1,14 +1,8 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def utcnow() -> datetime:
-    """Current UTC time as a naive ``datetime``.
-
-    Drop-in replacement for the deprecated ``datetime.utcnow()``. The database
-    ``TIMESTAMP`` columns are timezone-naive, so the tzinfo is intentionally stripped
-    to keep stored values identical while avoiding the deprecated call.
-    """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Logger:

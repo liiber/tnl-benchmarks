@@ -1,0 +1,57 @@
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: check-json
+
+  # Ruff and pytest run through `uv run`, so their versions come from uv.lock —
+  # the hooks, CI and your editor always use exactly the same tools.
+  - repo: local
+    hooks:
+      - id: uv-lock
+        name: uv lock is up to date
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format --check
+        language: system
+        types: [python]
+        stages: [pre-commit, pre-push]
+
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check
+        language: system
+        types: [python]
+        stages: [pre-commit, pre-push]
+
+      - id: mypy
+        name: mypy
+        # Checks the whole project (files are configured in pyproject.toml),
+        # not just the changed ones — types cross file boundaries.
+        entry: uv run --frozen mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: pytest
+        name: pytest
+        entry: uv run --frozen pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

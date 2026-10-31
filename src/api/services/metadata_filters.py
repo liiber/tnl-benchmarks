@@ -7,7 +7,7 @@ from sqlalchemy import Select, select
 from src.models.benchmarks import BenchmarkResultMetadata
 
 
-def metadata_value_filter(key: str, values: Iterable[str]) -> Select:
+def metadata_value_filter(key: str, values: Iterable[str]) -> Select[tuple[int]]:
     """Subquery selecting ``benchmark_result`` ids whose metadata entry for ``key``
     has a value in ``values``.
 

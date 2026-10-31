@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from src.database import async_session
 from src.environment import ENV
 from src.ingest.mappers import build_machine_fields
-from src.ingest.parsers import parse_log, parse_metadata
+from src.ingest.parsers import ParsedRow, parse_log, parse_metadata
 from src.ingest.utils import (
     TNL_REPO_PATH,
     TNL_REPO_URL,
@@ -96,12 +96,12 @@ async def ingest_results(
     start_time: datetime,
     end_time: datetime,
     commit_hash: str,
-):
+) -> None:
     if not files:
         Logger.warning(f">> [{benchmark_name}] No results found, skipping")
         return
 
-    all_rows = []
+    all_rows: list[ParsedRow] = []
     for _metadata_path, log_path in files:
         all_rows.extend(row for row in parse_log(log_path) if row["operation"])
 
@@ -158,7 +158,7 @@ async def ingest_results(
             session.add(run)
             await session.flush()
 
-            operations_cache = {}
+            operations_cache: dict[str | None, BenchmarkOperation] = {}
 
             for row in all_rows:
                 op_name = row["operation"]
@@ -210,7 +210,7 @@ async def ingest_results(
 
 async def benchmark_ingest_runner(
     prepare_sources: bool = True, execute_benchmarks: bool = True
-):
+) -> None:
     os.makedirs(WORKSPACE_PATH, exist_ok=True)
 
     if not execute_benchmarks:

@@ -45,7 +45,7 @@ async def get_ingest_run_status(
 @router.post("/cancel", status_code=200)
 async def cancel_ingest_run(
     x_ingest_token: str | None = Header(default=None, alias="X-Ingest-Token"),
-) -> dict:
+) -> dict[str, str]:
     _authorize(x_ingest_token)
     if not cancel_ingest():
         raise HTTPException(

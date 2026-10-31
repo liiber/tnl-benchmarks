@@ -1,6 +1,13 @@
 import json
+from collections.abc import Mapping
+from typing import TypedDict
 
-from src.ingest.formatting import normalize_nullable, to_optional_float, to_optional_int
+from src.ingest.formatting import (
+    AnyValue,
+    convert_to_optional_float,
+    convert_to_optional_int,
+    normalize_nullable,
+)
 
 _METRIC_SOURCE_KEYS = frozenset(
     {
@@ -31,7 +38,27 @@ _METRIC_SOURCE_KEYS = frozenset(
 _OPERATION_KEYS = ("operation", "function", "performer")
 
 
-def _resolve_operation(row: dict) -> tuple[str | None, str | None]:
+class ParsedMetrics(TypedDict):
+    time: float
+    time_median: float | None
+    stddev: float
+    stddev_time: float
+    loops: int
+    bandwidth: float | None
+    cpu_cycles: float | None
+    cpu_cycles_median: float | None
+    cpu_cycles_stddev: float | None
+    cpu_cycles_per_operation: float | None
+    ops_per_loop: int | None
+
+
+class ParsedRow(TypedDict):
+    operation: str | None
+    metrics: ParsedMetrics
+    metadata: dict[str, str | None]
+
+
+def _resolve_operation(row: Mapping[str, AnyValue]) -> tuple[str | None, str | None]:
     """Return ``(operation_value, source_key)`` for a parsed log row.
 
     ``source_key`` is the key the operation was taken from (or ``None`` if the row
@@ -40,17 +67,20 @@ def _resolve_operation(row: dict) -> tuple[str | None, str | None]:
     for key in _OPERATION_KEYS:
         value = normalize_nullable(row.get(key))
         if value:
-            return value, key
+            return str(value), key
     return None, None
 
 
-def parse_metadata(path: str):
+def parse_metadata(path: str) -> dict[str, AnyValue]:
     with open(path) as file:
-        return json.load(file)
+        metadata = json.load(file)
+    if not isinstance(metadata, dict):
+        raise ValueError(f"Expected a JSON object in {path}")
+    return metadata
 
 
-def parse_log(path: str):
-    results = []
+def parse_log(path: str) -> list[ParsedRow]:
+    results: list[ParsedRow] = []
 
     with open(path) as file:
         for line in file:
@@ -61,22 +91,30 @@ def parse_log(path: str):
 
             row = json.loads(line)
 
-            metrics = {
-                "time": to_optional_float(row.get("time")) or 0.0,
-                "time_median": to_optional_float(row.get("time_median")),
-                "stddev": to_optional_float(row.get("time_stddev", row.get("stddev")))
+            metrics: ParsedMetrics = {
+                "time": convert_to_optional_float(row.get("time")) or 0.0,
+                "time_median": convert_to_optional_float(row.get("time_median")),
+                "stddev": convert_to_optional_float(
+                    row.get("time_stddev", row.get("stddev"))
+                )
                 or 0.0,
-                "stddev_time": to_optional_float(
+                "stddev_time": convert_to_optional_float(
                     row.get("time_stddev/time", row.get("stddev/time"))
                 )
                 or 0.0,
-                "loops": to_optional_int(row.get("loops")) or 0,
-                "bandwidth": to_optional_float(row.get("bandwidth")),
-                "cpu_cycles": to_optional_float(row.get("cycles")),
-                "cpu_cycles_median": to_optional_float(row.get("cycles_median")),
-                "cpu_cycles_stddev": to_optional_float(row.get("cycles_stddev")),
-                "cpu_cycles_per_operation": to_optional_float(row.get("cycles/op")),
-                "ops_per_loop": to_optional_int(row.get("ops_per_loop")),
+                "loops": convert_to_optional_int(row.get("loops")) or 0,
+                "bandwidth": convert_to_optional_float(row.get("bandwidth")),
+                "cpu_cycles": convert_to_optional_float(row.get("cycles")),
+                "cpu_cycles_median": convert_to_optional_float(
+                    row.get("cycles_median")
+                ),
+                "cpu_cycles_stddev": convert_to_optional_float(
+                    row.get("cycles_stddev")
+                ),
+                "cpu_cycles_per_operation": convert_to_optional_float(
+                    row.get("cycles/op")
+                ),
+                "ops_per_loop": convert_to_optional_int(row.get("ops_per_loop")),
             }
 
             operation, operation_key = _resolve_operation(row)

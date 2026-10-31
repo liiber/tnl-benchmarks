@@ -31,8 +31,11 @@ class _RunMetricRow:
     metadata: dict[str, str | None]
 
 
-def _metric_key(row: _RunMetricRow) -> tuple:
-    return (row.operation,) + tuple(sorted(row.metadata.items()))
+type MetricKey = tuple[str, tuple[tuple[str, str | None], ...]]
+
+
+def _metric_key(row: _RunMetricRow) -> MetricKey:
+    return row.operation, tuple(sorted(row.metadata.items()))
 
 
 def _percentage_change(current: float | None, baseline: float | None) -> float | None:
@@ -306,7 +309,7 @@ async def _compare_benchmark(
             RegressionItemResponse(
                 benchmark=benchmark_name,
                 operation=key[0],
-                metadata=dict(key[1:]),
+                metadata=dict(key[1]),
                 baseline_run_id=baseline_run_id,
                 target_run_id=target_run_id,
                 baseline_time=base.time,
