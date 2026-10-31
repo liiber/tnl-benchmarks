@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 import src.ingest.ingest as ing
 
 
@@ -13,10 +15,12 @@ def _make_output(dir_path: Path, name: str) -> None:
 
 
 class TestRunBenchmarks:
-    def test_no_execute_collects_without_running(self, tmp_path, monkeypatch):
+    def test_no_execute_collects_without_running(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         _make_output(tmp_path, "tnl-benchmark-foo")
         monkeypatch.setattr(ing, "TNL_BENCHMARKS_BUILD_OUTPUT_DIR", str(tmp_path))
-        calls = []
+        calls: list[tuple[list[str]]] = []
         monkeypatch.setattr(ing, "run_command", lambda *a, **k: calls.append(a))
 
         results = ing.run_benchmarks(execute=False)
@@ -24,10 +28,12 @@ class TestRunBenchmarks:
         assert "tnl-benchmark-foo" in results
         assert calls == []  # binaries must NOT be executed in no-rebuild mode
 
-    def test_execute_runs_binaries(self, tmp_path, monkeypatch):
+    def test_execute_runs_binaries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         _make_output(tmp_path, "tnl-benchmark-foo")
         monkeypatch.setattr(ing, "TNL_BENCHMARKS_BUILD_OUTPUT_DIR", str(tmp_path))
-        calls = []
+        calls: list[tuple[list[str]]] = []
         monkeypatch.setattr(ing, "run_command", lambda *a, **k: calls.append(a))
 
         results = ing.run_benchmarks(execute=True)

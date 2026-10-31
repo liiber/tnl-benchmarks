@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +19,9 @@ from src.models.benchmarks import (
 )
 
 
-def _apply_filters(stmt: Select, filters: BenchmarkResultsFilterRequest) -> Select:
+def _apply_filters[T: tuple[Any, ...]](
+    stmt: Select[T], filters: BenchmarkResultsFilterRequest
+) -> Select[T]:
     if filters.date_from is not None:
         stmt = stmt.where(BenchmarkRun.start_time >= filters.date_from)
     if filters.date_to is not None:
@@ -41,7 +45,7 @@ def _apply_filters(stmt: Select, filters: BenchmarkResultsFilterRequest) -> Sele
     return stmt
 
 
-def _base_join() -> Select:
+def _base_join() -> Select[tuple[()]]:
     return (
         select()
         .join(BenchmarkRun, BenchmarkResult.run_id == BenchmarkRun.id)
@@ -52,7 +56,7 @@ def _base_join() -> Select:
     )
 
 
-def build_results_query(filters: BenchmarkResultsFilterRequest) -> Select:
+def build_results_query(filters: BenchmarkResultsFilterRequest) -> Select[Any]:
     stmt = _base_join().add_columns(
         Benchmark.benchmark_name.label("benchmark"),
         BenchmarkOperation.operation_name.label("operation"),
@@ -84,7 +88,7 @@ def build_results_query(filters: BenchmarkResultsFilterRequest) -> Select:
     )
 
 
-def build_count_query(filters: BenchmarkResultsFilterRequest) -> Select:
+def build_count_query(filters: BenchmarkResultsFilterRequest) -> Select[Any]:
     stmt = _base_join().add_columns(func.count().label("total"))
     return _apply_filters(stmt, filters)
 

@@ -14,7 +14,7 @@ APP_DIR = "/app"
 
 @dataclass
 class IngestRuntimeState:
-    process: subprocess.Popen | None = None
+    process: subprocess.Popen[bytes] | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     exit_code: int | None = None

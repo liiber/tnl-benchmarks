@@ -24,7 +24,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def main(skip_prepare: bool, no_rebuild: bool):
+async def main(skip_prepare: bool, no_rebuild: bool) -> None:
     Logger.bold("=== TNL Benchmarks Ingest ===")
     Logger.info("Initializing database...")
     await wait_for_db()

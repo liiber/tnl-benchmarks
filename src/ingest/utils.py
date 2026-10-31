@@ -1,10 +1,14 @@
 import hashlib
 import os
 import subprocess
+from collections.abc import Mapping, Sequence
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database import Base
 from src.environment import ENV
+from src.ingest.formatting import AnyValue
 from src.utils import Logger
 
 WORKSPACE_PATH = ENV.WORKSPACE_PATH
@@ -13,11 +17,16 @@ TNL_REPO_PATH = f"{WORKSPACE_PATH}/{TNL_REPO_DIR}"
 TNL_REPO_URL = ENV.TNL_REPO_URL
 
 
-def run_command(cmd, cwd=None, timeout=None, env=None):
+def run_command(
+    cmd: Sequence[str],
+    cwd: str | None = None,
+    timeout: float | None = None,
+    env: Mapping[str, str] | None = None,
+) -> None:
     subprocess.run(cmd, check=True, cwd=cwd, timeout=timeout, env=env)
 
 
-def git_clone_or_pull():
+def git_clone_or_pull() -> None:
     if not os.path.isdir(TNL_REPO_PATH):
         Logger.info(">> Cloning TNL repository...")
         run_command(["git", "clone", TNL_REPO_URL, TNL_REPO_PATH], cwd=WORKSPACE_PATH)
@@ -28,7 +37,7 @@ def git_clone_or_pull():
         Logger.success(">> Repository updated")
 
 
-def get_git_commit_hash():
+def get_git_commit_hash() -> str:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=TNL_REPO_PATH,
@@ -39,7 +48,7 @@ def get_git_commit_hash():
     return result.stdout.strip()
 
 
-def _write_tnl_env():
+def _write_tnl_env() -> None:
     def to_on_off(value: bool) -> str:
         return "ON" if value else "OFF"
 
@@ -55,7 +64,7 @@ def _write_tnl_env():
         f.write("\n".join(lines) + "\n")
 
 
-def build_tnl():
+def build_tnl() -> None:
     _write_tnl_env()
     # Strip our app-level TNL_* and CMAKE_* vars so they don't leak into cmake
     # via just's `set` command — just reads cmake config from the .env file we wrote
@@ -71,12 +80,12 @@ def build_tnl():
     Logger.success(">> Build completed")
 
 
-def compute_machine_hash(data: dict) -> str:
+def compute_machine_hash(data: Mapping[str, AnyValue]) -> str:
     raw = "|".join(
         [
-            data.get("CPU model name", "unknown"),
+            str(data.get("CPU model name", "unknown")),
             str(data.get("CPU cores", 0)),
-            data.get("GPU name", "none"),
+            str(data.get("GPU name", "none")),
             str(data.get("GPU CUDA cores", 0)),
         ]
     )
@@ -93,7 +102,12 @@ def compute_run_hash(
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def get_or_create(session, model, defaults=None, **kwargs):
+async def get_or_create[M: Base](
+    session: AsyncSession,
+    model: type[M],
+    defaults: Mapping[str, AnyValue] | None = None,
+    **kwargs: AnyValue,
+) -> M:
     result = await session.execute(select(model).filter_by(**kwargs))
     instance = result.scalar_one_or_none()
 

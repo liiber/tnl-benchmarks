@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.ingest.parsers import parse_log, parse_metadata
+from src.ingest.parsers import ParsedRow, parse_log, parse_metadata
 
 SAMPLE_LOG_ROWS = [
     {
@@ -65,34 +65,34 @@ def metadata_file(tmp_path: Path) -> Path:
 
 
 class TestParseLog:
-    def test_returns_correct_row_count(self, log_file: Path):
+    def test_returns_correct_row_count(self, log_file: Path) -> None:
         rows = parse_log(str(log_file))
         assert len(rows) == 2
 
-    def test_parses_operation(self, log_file: Path):
+    def test_parses_operation(self, log_file: Path) -> None:
         rows = parse_log(str(log_file))
         assert rows[0]["operation"] == "copy (memcpy)"
 
-    def test_parses_time_as_float(self, log_file: Path):
+    def test_parses_time_as_float(self, log_file: Path) -> None:
         rows = parse_log(str(log_file))
         assert rows[0]["metrics"]["time"] == pytest.approx(4.02291e-05)
 
-    def test_parses_bandwidth(self, log_file: Path):
+    def test_parses_bandwidth(self, log_file: Path) -> None:
         rows = parse_log(str(log_file))
         assert rows[0]["metrics"]["bandwidth"] == pytest.approx(37.04075)
 
-    def test_loops_parsed_as_int(self, log_file: Path):
+    def test_loops_parsed_as_int(self, log_file: Path) -> None:
         rows = parse_log(str(log_file))
         assert rows[0]["metrics"]["loops"] == 10
 
-    def test_dimension_fields_in_metadata(self, log_file: Path):
+    def test_dimension_fields_in_metadata(self, log_file: Path) -> None:
         rows = parse_log(str(log_file))
         assert rows[0]["metadata"]["precision"] == "double"
         assert rows[0]["metadata"]["host allocator"] == "Host"
         assert rows[0]["metadata"]["size"] == "100000"
         assert rows[0]["metadata"]["performer"] == "CPU"
 
-    def test_skips_non_json_lines(self, tmp_path: Path):
+    def test_skips_non_json_lines(self, tmp_path: Path) -> None:
         path = tmp_path / "mixed.log"
         path.write_text(
             "== Array operations ==\n"
@@ -103,14 +103,14 @@ class TestParseLog:
         rows = parse_log(str(path))
         assert len(rows) == 2
 
-    def test_new_stddev_field_name(self, tmp_path: Path):
+    def test_new_stddev_field_name(self, tmp_path: Path) -> None:
         row = {**SAMPLE_LOG_ROWS[0], "time_stddev": "1.23e-06"}
         path = tmp_path / "new.log"
         path.write_text(json.dumps(row))
         rows = parse_log(str(path))
         assert rows[0]["metrics"]["stddev"] == pytest.approx(1.23e-06)
 
-    def test_old_stddev_field_name_fallback(self, tmp_path: Path):
+    def test_old_stddev_field_name_fallback(self, tmp_path: Path) -> None:
         row = {k: v for k, v in SAMPLE_LOG_ROWS[0].items() if k != "time_stddev"}
         row["stddev"] = "9.99e-07"
         path = tmp_path / "old.log"
@@ -118,7 +118,7 @@ class TestParseLog:
         rows = parse_log(str(path))
         assert rows[0]["metrics"]["stddev"] == pytest.approx(9.99e-07)
 
-    def test_no_operation_row_still_parsed(self, tmp_path: Path):
+    def test_no_operation_row_still_parsed(self, tmp_path: Path) -> None:
         row = {
             k: v
             for k, v in SAMPLE_LOG_ROWS[0].items()
@@ -134,15 +134,15 @@ class TestParseLog:
 
 
 class TestParseMetadata:
-    def test_returns_dict(self, metadata_file: Path):
+    def test_returns_dict(self, metadata_file: Path) -> None:
         metadata = parse_metadata(str(metadata_file))
         assert isinstance(metadata, dict)
 
-    def test_parses_cpu_model(self, metadata_file: Path):
+    def test_parses_cpu_model(self, metadata_file: Path) -> None:
         metadata = parse_metadata(str(metadata_file))
         assert metadata["CPU model name"] == "Intel Core i7-9700K"
 
-    def test_parses_cpu_cores(self, metadata_file: Path):
+    def test_parses_cpu_cores(self, metadata_file: Path) -> None:
         metadata = parse_metadata(str(metadata_file))
         assert metadata["CPU cores"] == "8"
 
@@ -174,36 +174,36 @@ SORT_ROW = {
 
 
 class TestOperationResolution:
-    def _parse_one(self, tmp_path: Path, row: dict) -> dict:
+    def _parse_one(self, tmp_path: Path, row: dict[str, str]) -> ParsedRow:
         path = tmp_path / "one.log"
         path.write_text(json.dumps(row))
         return parse_log(str(path))[0]
 
-    def test_operation_field_used_directly(self, tmp_path: Path):
+    def test_operation_field_used_directly(self, tmp_path: Path) -> None:
         row = self._parse_one(tmp_path, SAMPLE_LOG_ROWS[0])
         assert row["operation"] == "copy (memcpy)"
         assert "operation" not in row["metadata"]
         assert row["metadata"]["performer"] == "CPU"
 
-    def test_function_used_when_no_operation(self, tmp_path: Path):
+    def test_function_used_when_no_operation(self, tmp_path: Path) -> None:
         row = self._parse_one(tmp_path, SEGMENTS_ROW)
         assert row["operation"] == "forElements"
         assert "function" not in row["metadata"]
         assert row["metadata"]["performer"] == "sequential"
         assert row["metadata"]["segments type"] == "CSR"
 
-    def test_performer_used_when_no_operation_or_function(self, tmp_path: Path):
+    def test_performer_used_when_no_operation_or_function(self, tmp_path: Path) -> None:
         row = self._parse_one(tmp_path, SORT_ROW)
         assert row["operation"] == "STL sort"
         assert "performer" not in row["metadata"]
         assert row["metadata"]["device"] == "host"
         assert row["metadata"]["distribution"] == "random"
 
-    def test_ratio_metrics_excluded_from_metadata(self, tmp_path: Path):
+    def test_ratio_metrics_excluded_from_metadata(self, tmp_path: Path) -> None:
         row = self._parse_one(tmp_path, SEGMENTS_ROW)
         assert "cycles_stddev/cycles" not in row["metadata"]
         assert "speedup" not in row["metadata"]
 
-    def test_row_without_operation_fields_yields_none(self, tmp_path: Path):
+    def test_row_without_operation_fields_yields_none(self, tmp_path: Path) -> None:
         row = self._parse_one(tmp_path, {"size": "10", "time": "1.0", "loops": "5"})
         assert row["operation"] is None

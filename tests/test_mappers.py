@@ -18,38 +18,38 @@ CPU_METADATA = {
 
 
 class TestBuildMachineFields:
-    def test_maps_cpu_fields(self):
+    def test_maps_cpu_fields(self) -> None:
         fields = build_machine_fields(CPU_METADATA)
         assert fields["cpu_model_name"] == "Intel Core i7-9700K"
         assert fields["cpu_cores"] == 8
         assert fields["cpu_max_frequency"] == 3600
         assert fields["cpu_threads_per_core"] == 1
 
-    def test_maps_system_fields(self):
+    def test_maps_system_fields(self) -> None:
         fields = build_machine_fields(CPU_METADATA)
         assert fields["host_name"] == "gp7"
         assert fields["system"] == "Linux"
         assert fields["system_release"] == "5.15.0"
         assert fields["architecture"] == "x86_64"
 
-    def test_openmp_enabled_parsed_as_bool(self):
+    def test_openmp_enabled_parsed_as_bool(self) -> None:
         assert build_machine_fields(CPU_METADATA)["openmp_enabled"] is True
         assert build_machine_fields({"OpenMP enabled": "no"})["openmp_enabled"] is False
         assert build_machine_fields({})["openmp_enabled"] is False
 
-    def test_na_gpu_fields_normalized_to_none(self):
+    def test_na_gpu_fields_normalized_to_none(self) -> None:
         fields = build_machine_fields(CPU_METADATA)
         assert fields["gpu_name"] is None
         assert fields["gpu_cuda_cores"] is None
 
-    def test_required_numeric_fields_default_to_zero_when_absent(self):
+    def test_required_numeric_fields_default_to_zero_when_absent(self) -> None:
         fields = build_machine_fields({})
         assert fields["cpu_cores"] == 0
         assert fields["cpu_max_frequency"] == 0
         assert fields["cpu_threads_per_core"] == 0
         assert fields["openmp_threads"] == 0
 
-    def test_returns_all_model_columns(self):
+    def test_returns_all_model_columns(self) -> None:
         fields = build_machine_fields(CPU_METADATA)
         expected = {
             "cpu_cache_sizes",

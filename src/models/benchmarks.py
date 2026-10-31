@@ -1,7 +1,8 @@
+from datetime import datetime
+
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,
-    Column,
     Float,
     ForeignKey,
     Index,
@@ -9,7 +10,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from src.database import Base
@@ -18,21 +19,23 @@ from src.database import Base
 class Benchmark(Base):
     __tablename__ = "benchmark"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    benchmark_name = Column(String(255), nullable=False, unique=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    benchmark_name: Mapped[str] = mapped_column(String(255), unique=True)
 
-    operations = relationship("BenchmarkOperation", back_populates="benchmark")
+    operations: Mapped[list[BenchmarkOperation]] = relationship(
+        back_populates="benchmark"
+    )
 
 
 class BenchmarkOperation(Base):
     __tablename__ = "benchmark_operation"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    benchmark_id = Column(Integer, ForeignKey("benchmark.id"), nullable=False)
-    operation_name = Column(String(255), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    benchmark_id: Mapped[int] = mapped_column(Integer, ForeignKey("benchmark.id"))
+    operation_name: Mapped[str] = mapped_column(String(255))
 
-    benchmark = relationship("Benchmark", back_populates="operations")
-    results = relationship("BenchmarkResult", back_populates="operation")
+    benchmark: Mapped[Benchmark] = relationship(back_populates="operations")
+    results: Mapped[list[BenchmarkResult]] = relationship(back_populates="operation")
 
 
 class BenchmarkResult(Base):
@@ -42,25 +45,27 @@ class BenchmarkResult(Base):
         Index("ix_benchmark_results_operation_id", "operation_id"),
     )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    operation_id = Column(Integer, ForeignKey("benchmark_operation.id"), nullable=False)
-    run_id = Column(Integer, ForeignKey("benchmark_run.id"), nullable=False)
-    time = Column(Float, nullable=False)
-    time_median = Column(Float, nullable=True)
-    stddev = Column(Float, nullable=False)
-    stddev_time = Column(Float, nullable=False)
-    loops = Column(Integer, nullable=False)
-    bandwidth = Column(Float, nullable=True)
-    cpu_cycles = Column(Float, nullable=True)
-    cpu_cycles_median = Column(Float, nullable=True)
-    cpu_cycles_stddev = Column(Float, nullable=True)
-    cpu_cycles_per_operation = Column(Float, nullable=True)
-    ops_per_loop = Column(Integer, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    operation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("benchmark_operation.id")
+    )
+    run_id: Mapped[int] = mapped_column(Integer, ForeignKey("benchmark_run.id"))
+    time: Mapped[float] = mapped_column(Float)
+    time_median: Mapped[float | None] = mapped_column(Float)
+    stddev: Mapped[float] = mapped_column(Float)
+    stddev_time: Mapped[float] = mapped_column(Float)
+    loops: Mapped[int] = mapped_column(Integer)
+    bandwidth: Mapped[float | None] = mapped_column(Float)
+    cpu_cycles: Mapped[float | None] = mapped_column(Float)
+    cpu_cycles_median: Mapped[float | None] = mapped_column(Float)
+    cpu_cycles_stddev: Mapped[float | None] = mapped_column(Float)
+    cpu_cycles_per_operation: Mapped[float | None] = mapped_column(Float)
+    ops_per_loop: Mapped[int | None] = mapped_column(Integer)
 
-    operation = relationship("BenchmarkOperation", back_populates="results")
-    run = relationship("BenchmarkRun", back_populates="results")
-    metadata_entries = relationship(
-        "BenchmarkResultMetadata", back_populates="result", cascade="all, delete-orphan"
+    operation: Mapped[BenchmarkOperation] = relationship(back_populates="results")
+    run: Mapped[BenchmarkRun] = relationship(back_populates="results")
+    metadata_entries: Mapped[list[BenchmarkResultMetadata]] = relationship(
+        back_populates="result", cascade="all, delete-orphan"
     )
 
 
@@ -73,53 +78,53 @@ class BenchmarkResultMetadata(Base):
         ),
     )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    result_id = Column(Integer, ForeignKey("benchmark_result.id"), nullable=False)
-    key = Column(String(255), nullable=False)
-    value = Column(String(1024), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    result_id: Mapped[int] = mapped_column(Integer, ForeignKey("benchmark_result.id"))
+    key: Mapped[str] = mapped_column(String(255))
+    value: Mapped[str | None] = mapped_column(String(1024))
 
-    result = relationship("BenchmarkResult", back_populates="metadata_entries")
+    result: Mapped[BenchmarkResult] = relationship(back_populates="metadata_entries")
 
 
 class BenchmarkRun(Base):
     __tablename__ = "benchmark_run"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    run_hash = Column(String(128), nullable=False, unique=True)
-    benchmark_id = Column(Integer, ForeignKey("benchmark.id"), nullable=False)
-    machine_id = Column(Integer, ForeignKey("benchmark_machine.id"), nullable=False)
-    start_time = Column(TIMESTAMP, nullable=False, default=func.now())
-    end_time = Column(TIMESTAMP, nullable=False)
-    duration = Column(Float, nullable=False)
-    source_url = Column(String, nullable=False)
-    source_version = Column(String(64), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    benchmark_id: Mapped[int] = mapped_column(Integer, ForeignKey("benchmark.id"))
+    machine_id: Mapped[int] = mapped_column(Integer, ForeignKey("benchmark_machine.id"))
+    start_time: Mapped[datetime] = mapped_column(TIMESTAMP, default=func.now())
+    end_time: Mapped[datetime] = mapped_column(TIMESTAMP)
+    duration: Mapped[float] = mapped_column(Float)
+    source_url: Mapped[str] = mapped_column(String)
+    source_version: Mapped[str] = mapped_column(String(64))
 
-    results = relationship("BenchmarkResult", back_populates="run")
-    machine = relationship("BenchmarkMachine", back_populates="runs")
+    results: Mapped[list[BenchmarkResult]] = relationship(back_populates="run")
+    machine: Mapped[BenchmarkMachine] = relationship(back_populates="runs")
 
 
 class BenchmarkMachine(Base):
     __tablename__ = "benchmark_machine"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    machine_hash = Column(String(128), nullable=False, unique=True)
-    cpu_cache_sizes = Column(String(255), nullable=True)
-    cpu_cores = Column(Integer, nullable=False)
-    cpu_max_frequency = Column(Integer, nullable=False)
-    cpu_model_name = Column(String(255), nullable=True)
-    cpu_threads_per_core = Column(Integer, nullable=False)
-    gpu_cuda_cores = Column(Integer, nullable=True)
-    gpu_architecture = Column(Float, nullable=True)
-    gpu_clock_rate_mhz = Column(Float, nullable=True)
-    gpu_global_memory_gb = Column(Float, nullable=True)
-    gpu_memory_ecc_enabled = Column(Boolean, nullable=True)
-    gpu_memory_clock_rate_mhz = Column(Float, nullable=True)
-    gpu_name = Column(String(255), nullable=True)
-    openmp_enabled = Column(Boolean, nullable=False)
-    openmp_threads = Column(Integer, nullable=False)
-    architecture = Column(String(255), nullable=True)
-    host_name = Column(String(255), nullable=True)
-    system = Column(String(255), nullable=True)
-    system_release = Column(String(255), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    machine_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    cpu_cache_sizes: Mapped[str | None] = mapped_column(String(255))
+    cpu_cores: Mapped[int] = mapped_column(Integer)
+    cpu_max_frequency: Mapped[int] = mapped_column(Integer)
+    cpu_model_name: Mapped[str | None] = mapped_column(String(255))
+    cpu_threads_per_core: Mapped[int] = mapped_column(Integer)
+    gpu_cuda_cores: Mapped[int | None] = mapped_column(Integer)
+    gpu_architecture: Mapped[float | None] = mapped_column(Float)
+    gpu_clock_rate_mhz: Mapped[float | None] = mapped_column(Float)
+    gpu_global_memory_gb: Mapped[float | None] = mapped_column(Float)
+    gpu_memory_ecc_enabled: Mapped[bool | None] = mapped_column(Boolean)
+    gpu_memory_clock_rate_mhz: Mapped[float | None] = mapped_column(Float)
+    gpu_name: Mapped[str | None] = mapped_column(String(255))
+    openmp_enabled: Mapped[bool] = mapped_column(Boolean)
+    openmp_threads: Mapped[int] = mapped_column(Integer)
+    architecture: Mapped[str | None] = mapped_column(String(255))
+    host_name: Mapped[str | None] = mapped_column(String(255))
+    system: Mapped[str | None] = mapped_column(String(255))
+    system_release: Mapped[str | None] = mapped_column(String(255))
 
-    runs = relationship("BenchmarkRun", back_populates="machine")
+    runs: Mapped[list[BenchmarkRun]] = relationship(back_populates="machine")

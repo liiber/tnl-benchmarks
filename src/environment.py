@@ -11,10 +11,10 @@ class Environment(BaseSettings):
 
     @field_validator("TNL_BENCHMARK_TIMEOUT_SECONDS", mode="before")
     @classmethod
-    def empty_string_to_none(cls, v):
-        if v == "":
+    def empty_string_to_none(cls, value: str | int | None) -> str | int | None:
+        if value == "":
             return None
-        return v
+        return value
 
     DB_USER: str = Field(..., min_length=3)
     DB_PASSWORD: str = Field(..., min_length=3)

@@ -1,9 +1,10 @@
 import asyncio
+from collections.abc import AsyncIterator
 
 from alembic.config import Config
 from alembic.util.exc import CommandError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 
 from alembic import command
 from src.environment import ENV
@@ -22,7 +23,9 @@ async_session = async_sessionmaker(
     expire_on_commit=False,
 )
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 def _run_migrations_sync() -> None:
@@ -53,6 +56,6 @@ async def wait_for_db() -> None:
     raise RuntimeError("Database failed to start")
 
 
-async def get_async_db():
+async def get_async_db() -> AsyncIterator[AsyncSession]:
     async with async_session() as session:
         yield session
