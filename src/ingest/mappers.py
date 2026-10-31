@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 
 from src.ingest.formatting import (
-    AnyValue,
+    Scalar,
     convert_int_to_optional_bool,
     convert_to_optional_float,
     convert_to_optional_int,
@@ -11,7 +11,7 @@ from src.ingest.formatting import (
 )
 
 
-def build_machine_fields(metadata: Mapping[str, AnyValue]) -> dict[str, AnyValue]:
+def build_machine_fields(metadata: Mapping[str, Scalar]) -> dict[str, Scalar]:
     """Map a parsed ``.metadata.json`` dict onto ``BenchmarkMachine`` column values.
 
     Hardware/system attributes are stored by TNL under human-readable keys (e.g.

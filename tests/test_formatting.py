@@ -91,5 +91,6 @@ class TestToOptionalBoolFromInt:
         assert convert_int_to_optional_bool("YES") is True
         assert convert_int_to_optional_bool("no") is False
 
-    def test_unparseable_returns_none(self) -> None:
-        assert convert_int_to_optional_bool("maybe") is None
+    def test_unparseable_raises(self) -> None:
+        with pytest.raises(ValueError):
+            convert_int_to_optional_bool("maybe")

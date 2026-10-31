@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from typing import TypedDict
 
 from src.ingest.formatting import (
-    AnyValue,
+    Scalar,
     convert_to_optional_float,
     convert_to_optional_int,
     normalize_nullable,
@@ -58,7 +58,7 @@ class ParsedRow(TypedDict):
     metadata: dict[str, str | None]
 
 
-def _resolve_operation(row: Mapping[str, AnyValue]) -> tuple[str | None, str | None]:
+def _resolve_operation(row: Mapping[str, Scalar]) -> tuple[str | None, str | None]:
     """Return ``(operation_value, source_key)`` for a parsed log row.
 
     ``source_key`` is the key the operation was taken from (or ``None`` if the row
@@ -71,7 +71,7 @@ def _resolve_operation(row: Mapping[str, AnyValue]) -> tuple[str | None, str | N
     return None, None
 
 
-def parse_metadata(path: str) -> dict[str, AnyValue]:
+def parse_metadata(path: str) -> dict[str, Scalar]:
     with open(path) as file:
         metadata = json.load(file)
     if not isinstance(metadata, dict):

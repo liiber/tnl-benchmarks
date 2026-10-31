@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import Base
 from src.environment import ENV
-from src.ingest.formatting import AnyValue
+from src.ingest.formatting import Scalar
 from src.utils import Logger
 
 WORKSPACE_PATH = ENV.WORKSPACE_PATH
@@ -80,7 +80,7 @@ def build_tnl() -> None:
     Logger.success(">> Build completed")
 
 
-def compute_machine_hash(data: Mapping[str, AnyValue]) -> str:
+def compute_machine_hash(data: Mapping[str, Scalar]) -> str:
     raw = "|".join(
         [
             str(data.get("CPU model name", "unknown")),
@@ -105,8 +105,8 @@ def compute_run_hash(
 async def get_or_create[M: Base](
     session: AsyncSession,
     model: type[M],
-    defaults: Mapping[str, AnyValue] | None = None,
-    **kwargs: AnyValue,
+    defaults: Mapping[str, Scalar] | None = None,
+    **kwargs: Scalar,
 ) -> M:
     result = await session.execute(select(model).filter_by(**kwargs))
     instance = result.scalar_one_or_none()

@@ -1,39 +1,50 @@
-type AnyValue = str | int | float | bool | None
-
-NULLISH_VALUES = {None, "", "N/A", "n/a", "NA", "na", "nan", "NaN", "null", "NULL"}
+type Scalar = str | int | float | bool | None
 
 
-def normalize_nullable(value: AnyValue) -> AnyValue:
+_NULLISH_VALUES = frozenset({"", "n/a", "na", "nan", "null"})
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on", "t", "y", "enabled"})
+_FALSE_VALUES = frozenset({"0", "false", "no", "off", "f", "n", "disabled"})
+
+
+def normalize_nullable(value: Scalar) -> Scalar:
     if isinstance(value, str):
-        stripped = value.strip()
-        return None if stripped in NULLISH_VALUES else stripped
+        normalized_value = value.strip()
+        return (
+            None if normalized_value.casefold() in _NULLISH_VALUES else normalized_value
+        )
+
     return value
 
 
-def convert_to_optional_float(value: AnyValue) -> float | None:
-    normalized = normalize_nullable(value)
-    return float(normalized) if normalized is not None else None
-
-
-def convert_to_optional_int(value: AnyValue) -> int | None:
-    normalized = normalize_nullable(value)
-    return int(float(normalized)) if normalized is not None else None
-
-
-_TRUE_VALUES = {"1", "true", "yes", "on", "t", "y", "enabled"}
-_FALSE_VALUES = {"0", "false", "no", "off", "f", "n", "disabled"}
-
-
-def convert_int_to_optional_bool(value: AnyValue) -> bool | None:
-    normalized = normalize_nullable(value)
-    if normalized is None:
+def convert_to_optional_float(value: Scalar) -> float | None:
+    normalized_value = normalize_nullable(value)
+    if normalized_value is None:
         return None
-    text = str(normalized).strip().lower()
-    if text in _TRUE_VALUES:
+
+    return float(normalized_value)
+
+
+def convert_to_optional_int(value: Scalar) -> int | None:
+    normalized_value = normalize_nullable(value)
+    if normalized_value is None:
+        return None
+
+    return int(float(normalized_value))
+
+
+def convert_int_to_optional_bool(value: Scalar) -> bool | None:
+    normalized_value = normalize_nullable(value)
+    if normalized_value is None:
+        return None
+
+    text_value = str(normalized_value).casefold()
+    if text_value in _TRUE_VALUES:
         return True
-    if text in _FALSE_VALUES:
+
+    if text_value in _FALSE_VALUES:
         return False
+
     try:
-        return bool(int(float(text)))
+        return bool(int(float(text_value)))
     except ValueError:
         return None
